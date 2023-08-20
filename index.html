@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    <button id="start">Start Party</button>
+    <button id="getRooms">get Rooms</button>
+    <fieldset>
+      <legend>Login</legend>
+      <input id="userName" />
+      <button id="login">Login</button>
+    </fieldset>
+    <fieldset>
+      <legend>Join room</legend>
+      <input id="roomId" />
+      <input id="roomCode" />
+      <button id="join">Join</button>
+    </fieldset>
+    <fieldset>
+      <legend>Create room</legend>
+      <input id="roomName" />
+      <input id="createRoomCode" />
+      <button id="createRoom">Create</button>
+    </fieldset>
+    <fieldset>
+      <legend>Rooms</legend>
+      <div id="rooms"></div>
+    </fieldset>
+    <script>
+      const startButton = document.getElementById("start");
+      const createRoomButton = document.getElementById("createRoom");
+      const getRoomsButton = document.getElementById("getRooms");
+      const joinRoomButton = document.getElementById("join");
+      const loginButton = document.getElementById("login");
+      const roomIdInput = document.getElementById("roomId");
+      const roomCodeInput = document.getElementById("roomCode");
+      const createRoomCodeInput = document.getElementById("createRoomCode");
+      const roomNameInput = document.getElementById("roomName");
+      const userNameInput = document.getElementById("userName");
+      const rooms = document.getElementById("rooms");
+
+      let audioSource;
+      let isInitAudio = false;
+      const socket = new WebSocket("ws://192.168.1.58:3000");
+      var audioContext;
+      const audioChunks = [];
+
+      let currentChunk = 0;
+      socket.addEventListener("open", (event) => {
+        console.log("WebSocket connection opened.");
+      });
+
+      socket.addEventListener("message", (event) => {
+        if (typeof event.data == "added") {
+          socket.send(JSON.stringify({ RequestId: 4, Body: "none" }));
+        }
+        if (event.data[0] == "[") {
+          JSON.parse(event.data).map((item) => {
+            rooms.innerHTML += `<p>${item.ID}</p>`;
+          });
+        }
+        if (typeof event.data == "object") {
+          const audioChunk = event.data;
+          audioChunks.push(new Blob([audioChunk], { type: "audio/mp3" }));
+          if (isInitAudio == false) {
+            console.log(audioChunks);
+            init();
+            playBuffer();
+            isInitAudio = true;
+          }
+        }
+      });
+
+      socket.addEventListener("close", (event) => {
+        console.log("WebSocket connection closed.");
+      });
+
+      socket.addEventListener("error", (error) => {
+        console.error("WebSocket error:", error);
+      });
+
+      startButton.addEventListener("click", (e) => {
+        socket.send(JSON.stringify({ RequestId: 4, Body: "none" }));
+      });
+
+      function init() {
+        audioContext = new AudioContext();
+      }
+
+      function playBuffer() {
+        const frameCount = audioContext.sampleRate * 2.0;
+        const source = audioContext.createBufferSource();
+        audioChunks[currentChunk].arrayBuffer().then((data) => {
+          audioContext.decodeAudioData(data, (d) => {
+            source.buffer = d;
+          });
+        });
+        source.connect(audioContext.destination);
+        source.start();
+        source.onended = () => {
+          currentChunk++;
+          playBuffer();
+          console.log(
+            `Play next chunk ${currentChunk} - ${audioContext.sampleRate}`
+          );
+        };
+      }
+      getRoomsButton.addEventListener("click", (e) => {
+        socket.send(JSON.stringify({ RequestId: 5, Body: "none" }));
+      });
+      createRoomButton.addEventListener("click", (e) => {
+        socket.send(
+          JSON.stringify({
+            RequestId: 2,
+            Body: JSON.stringify({
+              Name: roomNameInput.value,
+              Code: parseInt(createRoomCodeInput.value),
+            }),
+          })
+        );
+      });
+      loginButton.addEventListener("click", (e) => {
+        socket.send(
+          JSON.stringify({
+            RequestId: 1,
+            Body: userNameInput.value,
+          })
+        );
+      });
+      joinRoomButton.addEventListener("click", (e) => {
+        socket.send(
+          JSON.stringify({
+            RequestId: 6,
+            Body: JSON.stringify({
+              ID: roomIdInput.value,
+              Code: parseInt(roomCodeInput.value),
+            }),
+          })
+        );
+      });
+    </script>
+  </body>
+</html>
