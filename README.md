@@ -1,5 +1,5 @@
 # go-party
-Web app for stream a song as chunks and play them in the client in real time
+Web app for streaming a song as chunks between room guestes in real time
 
 ## Features 
 - Login using name 
