@@ -6,8 +6,6 @@ import (
 	"go-ws/utils"
 	"log"
 	"net/http"
-	"os"
-	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -30,20 +28,12 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	currentClient := &models.Client{ID: utils.GenerateUniqueID(), Connection: connection, IsConnected: true}
 	clients = append(clients, currentClient)
 	defer func() {
-		currentClient.IsConnected = false
-		currentClient.Close()
+		RemoveClient(currentClient)
 	}()
 	for {
 		_, message, err := currentClient.Connection.ReadMessage()
 		if err != nil {
-			currentClient.IsConnected = false
-			currentClient.Close()
-			break
-		}
-		if len(message) == 0 {
-			println(currentClient.ID + "Closed")
-			currentClient.IsConnected = false
-			currentClient.Close()
+			RemoveClient(currentClient)
 			break
 		}
 
@@ -61,6 +51,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 func handleClientRequest(client *models.Client, request *models.ClientRequest) {
 	if request.RequestId == models.CLIENT_LOGIN_REQUEST {
 		client.SetName(request.Body)
+		println(client.Name, "Joined")
 		client.Connection.WriteMessage(websocket.TextMessage, []byte("added"))
 		return
 	}
@@ -96,6 +87,7 @@ func handleClientRequest(client *models.Client, request *models.ClientRequest) {
 		}
 		for _, room := range rooms {
 			if room.ID == joinRoomBody.ID && room.Code == joinRoomBody.Code {
+				println(client.Name, "Joined", room.Name)
 				JoinRoom(room, client)
 			}
 		}
@@ -107,7 +99,7 @@ func handleClientRequest(client *models.Client, request *models.ClientRequest) {
 			if room.AdminID == client.ID {
 				println(client.Name + " is Admin " + "in " + room.Name)
 				println("room clients length", len(room.Clients))
-				SendBuffer(room.Clients)
+				room.StartParty()
 				return
 			}
 		}
@@ -115,43 +107,9 @@ func handleClientRequest(client *models.Client, request *models.ClientRequest) {
 	}
 
 }
-func SendBuffer(clients []*models.Client) {
-	println("Start file buffering...")
-	file, err := os.Open("./static/song.mp3")
-	if err != nil {
-		panic(err)
-	}
-	buffer := make([]byte, 1024*32)
-	for {
-		// Read a chunk from the file
-		n, err := file.Read(buffer)
-		if err != nil {
-			log.Println("Failed to read file:", err)
-			break
-		}
-
-		for _, client := range clients {
-			println(client.ID, client.IsConnected)
-			if client.IsConnected {
-
-				// Write the chunk to the WebSocket connection
-				err = client.Connection.WriteMessage(websocket.BinaryMessage, buffer[:n])
-				println("Send new buffer")
-				if err != nil {
-					log.Println("Failed to write to WebSocket:", err)
-					break
-				}
-			} else {
-				file.Close()
-				break
-			}
-		}
-		time.Sleep(500 * time.Millisecond)
-
-	}
-}
 
 func JoinRoom(room *models.Room, client *models.Client) {
+	client.RoomId = room.ID
 	room.AddClient(*client)
 	data, err := json.Marshal(room.Clients)
 	if err != nil {
@@ -159,6 +117,30 @@ func JoinRoom(room *models.Room, client *models.Client) {
 	}
 	client.Connection.WriteMessage(websocket.TextMessage, data)
 }
+func RemoveClient(client *models.Client) {
+	println(client.ID, "Dropped")
+	var updatedClients []*models.Client
+	client.Connection.Close()
+	for _, c := range clients {
+		if c.ID == client.ID {
+			updatedClients = append(updatedClients, c)
+			clients = updatedClients
+			if c.IsJoinedRoom() {
+				println(c.Name, "IsJoinedRoom", c.Name)
+				for _, room := range rooms {
+					if room.ID == c.RoomId {
+						println("Remove", c.Name, "from", room.Name)
+						room.RemoveClient(c)
+						println("Room", room.Name, "has", len(room.Clients))
+						break
+					}
+				}
+			}
+			break
+		}
+	}
+}
+
 func RunServer() {
 	http.HandleFunc("/", handleWebSocket)
 

@@ -7,6 +7,7 @@ type Client struct {
 	Connection  *websocket.Conn
 	IsConnected bool
 	Name        string
+	RoomId      string
 }
 
 func (client *Client) SetName(name string) {
@@ -18,4 +19,10 @@ func (client *Client) Close() {
 }
 func (client *Client) IsLogin() bool {
 	return client.IsConnected && client.Name != ""
+}
+func (client *Client) SetRoomId(id string) {
+	client.RoomId = id
+}
+func (client *Client) IsJoinedRoom() bool {
+	return client.RoomId != ""
 }
